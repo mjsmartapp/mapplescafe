@@ -1650,6 +1650,70 @@ tbody tr:hover {
             searchInput.addEventListener('input', () => renderOrdersTable(searchInput.value, dateInput.value));
             dateInput.addEventListener('change', () => renderOrdersTable(searchInput.value, dateInput.value));
         });
+
+
+	document.addEventListener('DOMContentLoaded', () => {
+        const loginModal = document.getElementById('login-modal');
+        const loginForm = document.getElementById('login-form');
+        const sidebarMenu = document.querySelector('.sidebar-menu');
+
+        const showLogin = () => loginModal.style.display = 'flex';
+        const hideLogin = () => loginModal.style.display = 'none';
+
+        const addLogoutButton = (adminName) => {
+            if (!document.getElementById('logout-btn')) {
+                const li = document.createElement('li');
+                li.innerHTML = `<a href="#" id="logout-btn">Logout (${adminName || "Admin"})</a>`;
+                sidebarMenu.appendChild(li);
+                document.getElementById('logout-btn').addEventListener('click', (e) => {
+                    e.preventDefault();
+                    localStorage.removeItem("loggedInAdmin");
+                    showLogin();
+                    li.remove();
+                });
+            }
+        };
+
+        // 🔹 Check session on load
+        const savedAdmin = localStorage.getItem("loggedInAdmin");
+        if (savedAdmin) {
+            hideLogin();
+            addLogoutButton(savedAdmin);
+        } else {
+            showLogin();
+        }
+
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+
+            firebase.database().ref("admins").once("value")
+                .then(snapshot => {
+                    let foundAdmin = null;
+
+                    snapshot.forEach(adminSnap => {
+                        const admin = adminSnap.val();
+                        if (admin.email === email) {
+                            foundAdmin = admin;
+                        }
+                    });
+
+                    if (foundAdmin) {
+                        // ✅ Save to localStorage
+                        localStorage.setItem("loggedInAdmin", foundAdmin.name || "Admin");
+
+                        hideLogin();
+                        addLogoutButton(foundAdmin.name);
+                    } else {
+                        alert("Unauthorized: Email not in admins list!");
+                    }
+                })
+                .catch(error => {
+                    console.error("Login error:", error);
+                    alert("Login failed, check console.");
+                });
+        });
+    });
     </script>
 
 <script src="https://cdn.jsdelivr.net/gh/davidshimjs/qrcodejs@gh-pages/qrcode.min.js"></script>
@@ -1665,6 +1729,22 @@ tbody tr:hover {
       }
     });
   </script>
+
+<div id="login-modal" class="modal">
+        <div class="modal-content">
+            <h3>Admin Login</h3>
+            <form id="login-form">
+                <label for="login-email">Email:</label>
+                <input type="email" id="login-email" required>
+                <label for="login-password">Password:</label>
+                <input type="password" id="login-password" required>
+                <div class="modal-actions">
+                    <button type="submit" class="save-btn">Login</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
 
 </body>
 </html>
