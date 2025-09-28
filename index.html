@@ -744,9 +744,10 @@
             <li><a href="order.html">Orders</a></li>
 	    <li><a href="#" data-section="sales">Sales</a></li>
             <li><a href="#" data-section="stock">Stock</a></li>
+	    <li><a href="#" data-section="salary">Salary</a></li>
             <li><a href="#" data-section="employees">Employees</a></li>
             <li><a href="#" data-section="attendance">Attendance</a></li>
-	    <li><a href="#" data-section="admins">Admins</a></li>
+	    <li><a href="#" data-section="admins">Admin</a></li>
 	    </ul>
     </div>
 
@@ -926,6 +927,60 @@
                 </table>
             </div>
         </div>
+
+
+	<div id="salary-section" class="content-section">
+  <div class="section-header">
+    <h2>Salary</h2>
+    <div class="action-buttons">
+      <select id="salary-emp-select">
+        <option value="">All Employees</option>
+      </select>
+      <select id="salary-month-select">
+        <option value="">All Months</option>
+      </select>
+      <button class="btn btn-primary" id="salary-filter-btn">Filter</button>
+    </div>
+  </div>
+  <div class="table-container">
+    <table id="salary-table">
+      <thead>
+        <tr>
+          <th>Emp ID</th>
+          <th>Emp Name</th>
+          <th>Total Present</th>
+          <th>Total Absent</th>
+          <th>Month</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="salary-details-modal" class="modal">
+  <div class="modal-content" style="max-width:600px;">
+    <span class="close-btn">&times;</span>
+    <h3 id="salary-details-title">Employee Attendance</h3>
+    <div class="table-container">
+      <table style="width:100%; border-collapse:collapse;">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Emp ID</th>
+            <th>Emp Name</th>
+            <th>IN Time</th>
+            <th>Out Time</th>
+            <th>Total Duration</th>
+          </tr>
+        </thead>
+        <tbody id="salary-details-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
         
         <div id="employees-section" class="content-section">
             <div class="section-header">
@@ -1287,6 +1342,8 @@ const firebaseConfig = {
                     if (sectionId === 'stock-section') renderStockTable();
                     if (sectionId === 'employees-section') renderEmployeesTable();
                     if (sectionId === 'attendance-section') renderAttendanceTable();
+		    if (sectionId === 'salary-section') openSalarySection();
+
                     
                     hideLoader();
                 }, 100);
@@ -1312,6 +1369,174 @@ navLinks.forEach(link => {
 });
 
 
+// === Salary View Logic ===
+const salaryTableBody = document.querySelector('#salary-table tbody');
+const salaryFilterBtn = document.getElementById('salary-filter-btn');
+const salaryEmpSelect = document.getElementById('salary-emp-select');
+const salaryMonthSelect = document.getElementById('salary-month-select');
+const salaryDetailsModal = document.getElementById('salary-details-modal');
+const salaryDetailsBody = document.getElementById('salary-details-body');
+const salaryDetailsTitle = document.getElementById('salary-details-title');
+
+// Helper: get YYYY-MM from a date string like "2025-09-28"
+const getMonthKey = (dateStr) => (dateStr || '').slice(0, 7);
+
+// Populate filters (employees + months)
+const populateSalaryFilters = () => {
+    salaryEmpSelect.innerHTML = '<option value="">All Employees</option>';
+    employees.forEach(emp => {
+        const opt = document.createElement('option');
+        opt.value = emp.empId || '';
+        opt.textContent = `${emp.empId || ''} - ${emp.name || ''}`;
+        salaryEmpSelect.appendChild(opt);
+    });
+
+    const monthsSet = new Set(
+        attendance.map(a => getMonthKey(a.date)).filter(Boolean)
+    );
+    const months = Array.from(monthsSet).sort().reverse();
+    salaryMonthSelect.innerHTML = '<option value="">All Months</option>';
+    months.forEach(month => {
+        const [year, mon] = month.split('-');
+        const monthName = new Date(year, (mon || '01') - 1).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+        const opt = document.createElement('option');
+        opt.value = month;
+        opt.textContent = monthName;
+        salaryMonthSelect.appendChild(opt);
+    });
+};
+
+// Render Salary Table
+const renderSalaryTable = () => {
+    salaryTableBody.innerHTML = '';
+    const selectedEmpId = salaryEmpSelect.value;
+    const selectedMonth = salaryMonthSelect.value;
+
+    if (!employees || employees.length === 0) {
+        salaryTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">No employees found</td></tr>`;
+        return;
+    }
+
+    employees.forEach(emp => {
+        if (selectedEmpId && emp.empId !== selectedEmpId) return;
+
+        const empAttendance = attendance.filter(a => {
+            const matchesEmpId = (a.employeeEmpId && emp.empId && a.employeeEmpId === emp.empId);
+            const matchesUid = (a.employeeId && emp.id && a.employeeId === emp.id);
+            return (matchesEmpId || matchesUid) && (!selectedMonth || getMonthKey(a.date) === selectedMonth);
+        });
+
+        const empDays = new Set(empAttendance.map(a => a.date));
+        const presentDates = new Set();
+
+        empAttendance.forEach(a => {
+            if (a.inTime && a.outTime) presentDates.add(a.date);
+        });
+
+        const totalPresent = presentDates.size;
+        const totalAbsent = Math.max(0, empDays.size - totalPresent);
+
+        const monthText = selectedMonth
+            ? new Date(selectedMonth.split('-')[0], selectedMonth.split('-')[1] - 1)
+                .toLocaleString('en-US', { month: 'long', year: 'numeric' })
+            : 'All';
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${emp.empId || ''}</td>
+            <td>${emp.name || ''}</td>
+            <td>${totalPresent}</td>
+            <td>${totalAbsent}</td>
+            <td>${monthText}</td>
+            <td>
+                <button class="btn btn-info view-daily-btn" 
+                        data-empid="${emp.empId || ''}" 
+                        data-uid="${emp.id || ''}" 
+                        data-month="${selectedMonth || ''}">View</button>
+            </td>
+        `;
+        salaryTableBody.appendChild(row);
+    });
+
+    if (!salaryTableBody.hasChildNodes()) {
+        salaryTableBody.innerHTML = `<tr><td colspan="6" style="text-align:center;">No records found</td></tr>`;
+    }
+};
+
+// Show daily attendance in popup modal
+salaryTableBody.addEventListener('click', (e) => {
+    if (!e.target.classList.contains('view-daily-btn')) return;
+
+    const empId = e.target.dataset.empid;
+    const uid = e.target.dataset.uid;
+    const month = e.target.dataset.month;
+    const emp = employees.find(emp => (emp.empId === empId) || (emp.id === uid));
+
+    if (!emp) {
+        showPopupMessage('Employee not found.');
+        return;
+    }
+
+    const records = attendance.filter(a => {
+        const matchesEmpId = (a.employeeEmpId && emp.empId && a.employeeEmpId === emp.empId);
+        const matchesUid = (a.employeeId && emp.id && a.employeeId === emp.id);
+        return (matchesEmpId || matchesUid) && (!month || getMonthKey(a.date) === month);
+    }).sort((a,b) => a.date.localeCompare(b.date));
+
+    if (!records.length) {
+        showPopupMessage(`No attendance records found for ${emp.name}${month ? ` (${month})` : ''}`);
+        return;
+    }
+
+    salaryDetailsTitle.textContent = `Attendance - ${emp.name}`;
+    salaryDetailsBody.innerHTML = '';
+
+    records.forEach(r => {
+        const inT = r.inTime ? new Date(r.inTime) : null;
+        const outT = r.outTime ? new Date(r.outTime) : null;
+        let durationStr = '--';
+        if (inT && outT) {
+            const diffMs = outT - inT;
+            const hours = Math.floor(diffMs / (1000 * 60 * 60));
+            const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
+            durationStr = `${hours}h ${minutes}m ${seconds}s`;
+        }
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${r.date || '--'}</td>
+            <td>${emp.empId || ''}</td>
+            <td>${emp.name || ''}</td>
+            <td>${inT ? inT.toLocaleTimeString() : '--'}</td>
+            <td>${outT ? outT.toLocaleTimeString() : '--'}</td>
+            <td>${durationStr}</td>
+        `;
+        salaryDetailsBody.appendChild(row);
+    });
+
+    // ✅ Show modal
+    salaryDetailsModal.style.display = 'flex';
+});
+
+// Close modal (X button or outside click)
+document.querySelector('#salary-details-modal .close-btn').addEventListener('click', () => {
+    salaryDetailsModal.style.display = 'none';
+});
+window.addEventListener('click', (e) => {
+    if (e.target === salaryDetailsModal) {
+        salaryDetailsModal.style.display = 'none';
+    }
+});
+
+// Hook up filter button
+salaryFilterBtn.addEventListener('click', renderSalaryTable);
+
+// Called when user navigates to Salary
+const openSalarySection = () => {
+    populateSalaryFilters();
+    renderSalaryTable();
+};
 
 	
 
