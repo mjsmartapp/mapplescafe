@@ -515,29 +515,45 @@
         
         @media (max-width: 768px) {
             body {
-                flex-direction: column;
-            }
-            .sidebar {
-                width: 100%;
-                flex-direction: row;
-                justify-content: space-around;
-                padding: 10px;
-                flex-wrap: wrap; /* NEW: Allow items to wrap */
-                height: auto;
-            }
-            .cafe-name { display: none; }
-            .sidebar-menu { 
-                display: flex; 
-                flex-direction: row; 
-                justify-content: center; /* NEW: Center menu items */
-                flex-wrap: wrap; /* NEW: Allow links to wrap */
-            }
-            .sidebar-menu li { margin: 5px; } /* UPDATED: Margin for wrapping */
-            .sidebar-menu a { padding: 8px; }
-            .invoice-main {
-                grid-template-columns: 1fr;
-                height: auto;
-            }
+        flex-direction: column;
+    }
+
+    .sidebar {
+        width: 100%;
+        height: auto;
+        position: static;
+        /* UPDATED: Added new styles for horizontal menu on mobile */
+        flex-direction: row;
+        align-items: center;
+        justify-content: flex-start;
+        padding: 10px;
+        overflow-x: auto;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    }
+    
+    /* UPDATED: Hide cafe name in mobile top bar */
+    .cafe-name {
+        display: none;
+    }
+    
+    /* UPDATED: Make menu horizontal, scrollable, and compact */
+    .sidebar-menu {
+        display: flex; 
+        padding: 0;
+    }
+
+    .sidebar-menu li {
+        margin-bottom: 0;
+        margin-right: 10px; 
+        flex-shrink: 0; 
+    }
+
+    .sidebar-menu a {
+        padding: 8px 12px; 
+        white-space: nowrap;
+        font-size: 0.9rem;
+    }
+
             .header { flex-direction: column; align-items: flex-start; }
             .header h1 { margin-bottom: 10px; }
             .dashboard-graphs {
@@ -730,7 +746,8 @@
             <li><a href="#" data-section="stock">Stock</a></li>
             <li><a href="#" data-section="employees">Employees</a></li>
             <li><a href="#" data-section="attendance">Attendance</a></li>
-        </ul>
+	    <li><a href="#" data-section="admins">Admins</a></li>
+	    </ul>
     </div>
 
     <div class="main-content">
@@ -833,6 +850,31 @@
                 </div>
             </div>
         </div>
+
+	<div id="admins-section" class="content-section">
+  <div class="section-header">
+    <h2>Admin Management</h2>
+    <div class="action-buttons">
+      <button class="btn btn-success" id="addAdminBtn">Add Admin</button>
+    </div>
+  </div>
+
+  <div class="table-container">
+    <table id="admins-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Password</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
         
         <div id="sales-section" class="content-section">
             <div class="section-header">
@@ -1008,6 +1050,31 @@
         </div>
     </div>
 
+	<div id="admin-modal" class="modal">
+  <div class="modal-content">
+    <span class="close-btn">&times;</span>
+    <h3 id="admin-modal-title">Add Admin</h3>
+    <form id="admin-form">
+      <input type="hidden" id="admin-id">
+
+      <label for="admin-name">Name:</label>
+      <input type="text" id="admin-name" required>
+
+      <label for="admin-email">Email:</label>
+      <input type="email" id="admin-email" required>
+
+      <label for="admin-password">Password:</label>
+      <input type="password" id="admin-password" required>
+
+      <div class="modal-actions">
+        <button type="button" class="btn cancel-btn">Cancel</button>
+        <button type="submit" class="btn save-btn">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
     <div id="employee-modal" class="modal">
         <div class="modal-content">
             <span class="close-btn">&times;</span>
@@ -1091,6 +1158,7 @@ const firebaseConfig = {
             firebase.initializeApp(firebaseConfig);
             const database = firebase.database();
             const auth = firebase.auth();
+	    
             
             let products = [];
             let invoices = [];
@@ -1711,6 +1779,121 @@ navLinks.forEach(link => {
 
             document.getElementById('reset-invoice-btn').addEventListener('click', resetInvoice);
 
+
+
+	    // -------------------- Admin Management --------------------
+let admins = [];
+
+const adminsTableBody = document.querySelector('#admins-table tbody');
+const adminModal = document.getElementById('admin-modal');
+const adminModalTitle = document.getElementById('admin-modal-title');
+const adminForm = document.getElementById('admin-form');
+const adminIdInput = document.getElementById('admin-id');
+const adminNameInput = document.getElementById('admin-name');
+const adminEmailInput = document.getElementById('admin-email');
+const adminPasswordInput = document.getElementById('admin-password');
+const addAdminBtn = document.getElementById('addAdminBtn');
+
+// Render Admins Table
+const renderAdminsTable = () => {
+  adminsTableBody.innerHTML = '';
+  admins.forEach(admin => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${admin.id}</td>
+      <td>${admin.name}</td>
+      <td>${admin.email}</td>
+      <td>${admin.password ? "••••••" : ""}</td>
+      <td>
+        <button class="btn btn-info edit-admin-btn" data-id="${admin.id}">Edit</button>
+        <button class="btn btn-danger delete-admin-btn" data-id="${admin.id}">Delete</button>
+      </td>
+    `;
+    adminsTableBody.appendChild(row);
+  });
+};
+
+// Firebase listener → Load admins
+database.ref('admins').on('value', snapshot => {
+  admins = [];
+  snapshot.forEach(childSnap => {
+    admins.push(childSnap.val());
+  });
+  renderAdminsTable();
+});
+
+// Open Add Admin modal
+addAdminBtn.addEventListener('click', () => {
+  adminModalTitle.textContent = "Add Admin";
+  adminIdInput.value = "";
+  adminNameInput.value = "";
+  adminEmailInput.value = "";
+  adminPasswordInput.value = "";
+  adminModal.style.display = "flex";
+});
+
+// Generate Next Admin ID (MCADMIN format)
+const generateAdminId = () => {
+  let maxNum = 0;
+  admins.forEach(admin => {
+    const num = parseInt(admin.id.replace("MCADMIN", ""));
+    if (!isNaN(num) && num > maxNum) {
+      maxNum = num;
+    }
+  });
+  return "MCADMIN" + String(maxNum + 1).padStart(3, "0"); // MCADMIN001, MCADMIN002...
+};
+
+// Save Admin (Add/Edit)
+adminForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  let id = adminIdInput.value;
+
+  // If no ID, generate new
+  if (!id) {
+    id = generateAdminId();
+  }
+
+  const newAdmin = {
+    id,
+    name: adminNameInput.value,
+    email: adminEmailInput.value,
+    password: adminPasswordInput.value
+  };
+
+  await database.ref('admins/' + id).set(newAdmin);
+  adminModal.style.display = "none";
+});
+
+// Edit/Delete buttons
+adminsTableBody.addEventListener('click', async (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  const id = btn.dataset.id;
+
+  if (btn.classList.contains('edit-admin-btn')) {
+    const admin = admins.find(a => a.id === id);
+    if (admin) {
+      adminModalTitle.textContent = "Edit Admin";
+      adminIdInput.value = admin.id;
+      adminNameInput.value = admin.name;
+      adminEmailInput.value = admin.email;
+      adminPasswordInput.value = admin.password;
+      adminModal.style.display = "flex";
+    }
+  } else if (btn.classList.contains('delete-admin-btn')) {
+    if (confirm("Delete this admin?")) {
+      await database.ref('admins/' + id).remove();
+    }
+  }
+});
+
+// Close modal (X and Cancel)
+adminModal.querySelector('.close-btn').addEventListener('click', () => adminModal.style.display = 'none');
+adminModal.querySelector('.cancel-btn').addEventListener('click', () => adminModal.style.display = 'none');
+
+
+
             // Sales View
             const salesDetailsModal = document.getElementById('sales-details-modal');
             const receiptDetails = document.getElementById('receipt-details');
@@ -2317,60 +2500,70 @@ deleteQrBtn.addEventListener('click', () => {
             switchSection('dashboard-section');
         });
     
-    // ===== Login System =====
-    document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', () => {
         const loginModal = document.getElementById('login-modal');
         const loginForm = document.getElementById('login-form');
         const sidebarMenu = document.querySelector('.sidebar-menu');
-        
-        const adminEmail = "admin@mj.com";
-        const adminPassword = "Admin@2025";
-        
-        const showLogin = () => {
-            loginModal.style.display = 'flex';
-        };
-        
-        const hideLogin = () => {
-            loginModal.style.display = 'none';
-        };
-        
-        const addLogoutButton = () => {
+
+        const showLogin = () => loginModal.style.display = 'flex';
+        const hideLogin = () => loginModal.style.display = 'none';
+
+        const addLogoutButton = (adminName) => {
             if (!document.getElementById('logout-btn')) {
                 const li = document.createElement('li');
-                li.innerHTML = '<a href="#" id="logout-btn">Logout</a>';
+                li.innerHTML = `<a href="#" id="logout-btn">Logout (${adminName || "Admin"})</a>`;
                 sidebarMenu.appendChild(li);
                 document.getElementById('logout-btn').addEventListener('click', (e) => {
                     e.preventDefault();
-                    localStorage.removeItem('loggedIn');
+                    localStorage.removeItem("loggedInAdmin");
                     showLogin();
                     li.remove();
                 });
             }
         };
-        
-        if (!localStorage.getItem('loggedIn')) {
-            showLogin();
-        } else {
+
+        // 🔹 Check session on load
+        const savedAdmin = localStorage.getItem("loggedInAdmin");
+        if (savedAdmin) {
             hideLogin();
-            addLogoutButton();
+            addLogoutButton(savedAdmin);
+        } else {
+            showLogin();
         }
-        
+
         loginForm.addEventListener('submit', (e) => {
             e.preventDefault();
             const email = document.getElementById('login-email').value;
-            const password = document.getElementById('login-password').value;
-            
-            if (email === adminEmail && password === adminPassword) {
-                localStorage.setItem('loggedIn', 'true');
-                hideLogin();
-                addLogoutButton();
-            } else {
-                alert("Invalid credentials!");
-            }
+
+            firebase.database().ref("admins").once("value")
+                .then(snapshot => {
+                    let foundAdmin = null;
+
+                    snapshot.forEach(adminSnap => {
+                        const admin = adminSnap.val();
+                        if (admin.email === email) {
+                            foundAdmin = admin;
+                        }
+                    });
+
+                    if (foundAdmin) {
+                        // ✅ Save to localStorage
+                        localStorage.setItem("loggedInAdmin", foundAdmin.name || "Admin");
+
+                        hideLogin();
+                        addLogoutButton(foundAdmin.name);
+                    } else {
+                        alert("Unauthorized: Email not in admins list!");
+                    }
+                })
+                .catch(error => {
+                    console.error("Login error:", error);
+                    alert("Login failed, check console.");
+                });
         });
     });
-
 </script>
+
 
     <div id="login-modal" class="modal">
         <div class="modal-content">
