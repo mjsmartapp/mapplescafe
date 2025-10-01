@@ -816,8 +816,10 @@ tbody tr:hover {
   <li><a href="order.html" class="active">Orders</a></li>
   <li><a href="index.html#sales" data-section="sales">Sales</a></li>
   <li><a href="index.html#stock" data-section="stock">Stock</a></li>
+  <li><a href="index.html#salary" data-section="sales">Salary</a></li>
   <li><a href="index.html#employees" data-section="employees">Employees</a></li>
   <li><a href="index.html#attendance" data-section="attendance">Attendance</a></li>
+  <li><a href="index.html#admin" data-section="sales">Admin</a></li>
 </ul>
   </div>
 
@@ -1384,11 +1386,40 @@ tbody tr:hover {
                             });
                         };
 
-                        sendBtn.onclick = async () => {
-                            await database.ref('orders/' + id).update({ status: 'Send' });
-                            showPopupMessage('Order sent to kitchen.');
-                            orderDetailsModal.style.display = 'none';
-                        };
+                       sendBtn.onclick = async () => {
+    try {
+        await database.ref('orders/' + id).update({ status: 'Send' });
+
+        const kitchenInvoiceRef = database.ref('kitchenInvoices').push();
+        const now = new Date();
+
+        const kitchenInvoiceData = {
+            id: kitchenInvoiceRef.key,
+            orderId: order.orderId,
+            displayId: order.displayId,
+            empId: order.empId,
+            empName: order.empName,
+            tableNo: order.tableNo,
+            customerName: order.customerName,
+            items: order.items,
+            totalAmount: order.totalAmount,
+            status: "In Kitchen",
+            timestamp: now.toISOString()
+        };
+
+        await kitchenInvoiceRef.set(kitchenInvoiceData);
+
+        showPopupMessage('Order sent to Kitchen.');
+        orderDetailsModal.style.display = 'none';
+
+        // 🔹 Print Kitchen Copy
+        printKitchenInvoice(kitchenInvoiceData);
+
+    } catch (error) {
+        console.error("Error sending to kitchen:", error);
+        showPopupMessage('Failed to send order to kitchen.');
+    }
+};
 
                         cancelBtn.onclick = async () => {
                             await database.ref('orders/' + id).update({ status: 'Cancelled' });
@@ -1452,17 +1483,27 @@ tbody tr:hover {
                     splitPaymentSection.style.display = 'none';
 
                     if (selectedPaymentMethod === 'Split') {
-                        splitPaymentSection.style.display = 'block';
-                        cashSplitAmountInput.value = totalOrderAmount.toFixed(2);
-                        updateSplitAmounts();
-                    } else if (selectedPaymentMethod === 'Cash' || selectedPaymentMethod === 'Online') {
-                        // Direct processing for non-split payments
-                        finalisePaymentBtn.disabled = false;
-                        invoiceModal.style.display = 'none';
-                        handlePaymentAndInvoice(currentOrderToComplete, selectedPaymentMethod,
-                            selectedPaymentMethod === 'Cash' ? totalOrderAmount : 0,
-                            selectedPaymentMethod === 'Online' ? totalOrderAmount : 0);
-                    }
+    splitPaymentSection.style.display = 'block';
+    cashSplitAmountInput.value = '';     // start empty
+    onlineSplitAmountInput.value = '';   // start empty
+    splitRemainingSpan.textContent = totalOrderAmount.toFixed(2);
+    finalisePaymentBtn.disabled = true;
+} else if (selectedPaymentMethod === 'Cash') {
+    // Show total directly in Cash
+    splitPaymentSection.style.display = 'block';
+    cashSplitAmountInput.value = totalOrderAmount.toFixed(2);
+    onlineSplitAmountInput.value = '0.00';
+    splitRemainingSpan.textContent = "0.00";
+    finalisePaymentBtn.disabled = false;
+} else if (selectedPaymentMethod === 'Online') {
+    // Show total directly in Online
+    splitPaymentSection.style.display = 'block';
+    cashSplitAmountInput.value = '0.00';
+    onlineSplitAmountInput.value = totalOrderAmount.toFixed(2);
+    splitRemainingSpan.textContent = "0.00";
+    finalisePaymentBtn.disabled = false;
+}
+
                 });
             });
 
@@ -1501,7 +1542,7 @@ tbody tr:hover {
 
     let receipt = '';
     receipt += centerText("MAPPLE'S CAFE") + '\n';
-    receipt += centerText("Your Daily Dose of Delight") + '\n';
+    receipt += centerText("A LITTLE TEA, LOT OF LOVE") + '\n';
     receipt += line + '\n';
 
     const dateObj = new Date(invoice.date);
@@ -1539,6 +1580,65 @@ tbody tr:hover {
 
     return receipt;
 };
+
+
+
+const printKitchenInvoice = (kitchenInvoice) => {
+    const WIDTH = 42; // characters per line
+
+    const centerText = (text) => {
+        const pad = Math.floor((WIDTH - text.length) / 2);
+        return ' '.repeat(Math.max(0, pad)) + text;
+    };
+
+    const line = '-'.repeat(WIDTH);
+
+    let receipt = '';
+    receipt += centerText("MAPPLE'S CAFE") + '\n';
+    receipt += centerText("KITCHEN ORDER") + '\n';
+    receipt += line + '\n';
+
+    // Header info
+    const dateObj = new Date(kitchenInvoice.timestamp);
+    const dateStr = dateObj.toLocaleDateString('en-GB');
+    const timeStr = dateObj.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+    receipt += `Order ID : ${kitchenInvoice.displayId}\n`;
+    receipt += `Table No : ${kitchenInvoice.tableNo || 'N/A'}\n`;
+    receipt += `Time     : ${dateStr} ${timeStr}\n`;
+    receipt += line + '\n';
+
+    // Table header
+    receipt += `Item                Qty   Total\n`;
+    receipt += line + '\n';
+
+    // List items
+    kitchenInvoice.items.forEach(item => {
+        const name = item.name.padEnd(18, ' ').substring(0, 18);
+        const qty = String(item.quantity).padStart(3, ' ');
+        const total = (item.total || item.price * item.quantity).toFixed(2).padStart(7, ' ');
+        receipt += `${name}${qty}${total}\n`;
+    });
+
+    receipt += line + '\n';
+
+    // Total
+    const totalLine = `TOTAL: ₹${kitchenInvoice.totalAmount.toFixed(2)}`;
+    receipt += totalLine.padStart(WIDTH) + '\n';
+
+    // --- Print ---
+    let printArea = document.getElementById('print-area');
+    if (!printArea) {
+        printArea = document.createElement('div');
+        printArea.id = 'print-area';
+        document.body.appendChild(printArea);
+    }
+
+    printArea.innerHTML = `<pre>${receipt}</pre>`;
+    window.print();
+    setTimeout(() => { printArea.innerHTML = ''; }, 500);
+};
+
 
 
 
